@@ -2,105 +2,160 @@
 
 **English** | [Türkçe](README.tr.md)
 
-Use Google Antigravity CLI as an external coding/review agent from **OpenAI Codex** or **Claude Code**, while keeping the host coding agent responsible for final verification.
+Delegate bounded coding, review, debugging, or architecture tasks from **OpenAI Codex** or **Claude Code** to Google Antigravity CLI. The host agent plans and verifies; Antigravity supplies an independent implementation or second opinion.
 
-The package implements the same workflow on both hosts:
-
-```text
-User
-  │
-  ▼
-Codex / Claude Code main agent
-  │
-  ▼
-Antigravity delegation skill
-  │
-  ▼
-Platform-specific Antigravity subagent
-  │
-  ▼
-agy --output-format json
-  │
-  ▼
-Antigravity-hosted model
-  │
-  ▼
-Concise structured findings
-  │
-  ▼
-Main agent verifies repository state, diff, tests, and evidence
+```mermaid
+flowchart LR
+    A["Main agent<br/>Planning and verification"] --> B["Adapter subagent<br/>Luna or Haiku"]
+    B --> C["Antigravity CLI<br/>agy"]
+    C --> D["Gemini 3.7 Flash<br/>Implementation or review"]
+    D -->|Structured result| B
+    B -->|Concise evidence| A
 ```
 
-Antigravity is deliberately treated as an **independent external opinion**, not as a source of truth.
+## How it works
 
-## Why there are two SKILL.md files
+- Codex uses a project skill plus a `gpt-5.6-luna` adapter with low reasoning.
+- Claude Code uses a forked skill plus a `haiku` adapter with low effort.
+- Both adapters default to `gemini-3.7-flash-high` for substantive work.
+- `consult` and `review` are read-only; `implement` allows only explicitly scoped edits.
+- The main agent verifies Antigravity's result before accepting it.
 
-Codex and Claude Code both support reusable skills, and Claude Code follows the Agent Skills open standard. Their host-specific execution features are not identical, however.
+Codex and Claude Code need separate wrappers because their custom-agent mechanisms differ. The workflow and safety rules remain equivalent.
 
-The Claude Code version uses native skill frontmatter such as:
-
-```yaml
-context: fork
-agent: antigravity
-```
-
-This causes the skill to execute in an isolated custom Claude Code subagent.
-
-The Codex version instead instructs the main Codex agent to delegate the bounded work order to the custom `antigravity` Codex subagent.
-
-The workflow and safety policy are intentionally equivalent, but the wrappers remain separate so the package does not depend on either host ignoring unknown configuration fields.
-
-## Repository layout
+## Files
 
 ```text
-.
-├── README.md
-├── README.tr.md
-├── .agents/
-│   └── skills/
-│       └── antigravity-delegation/
-│           └── SKILL.md
-├── .codex/
-│   └── agents/
-│       └── antigravity.toml
-└── .claude/
-    ├── skills/
-    │   └── antigravity-delegation/
-    │       └── SKILL.md
-    └── agents/
-        └── antigravity.md
+.agents/skills/antigravity-delegation/SKILL.md   # Codex skill
+.codex/agents/antigravity.toml                   # Codex adapter
+.claude/skills/antigravity-delegation/SKILL.md   # Claude Code skill
+.claude/agents/antigravity.md                    # Claude Code adapter
 ```
 
 ## Requirements
 
-You need:
+- Google Antigravity CLI installed and authenticated
+- `agy` available on `PATH`
+- Codex, Claude Code, or both
+- Git for diff verification in implementation tasks
 
-- Google Antigravity CLI installed and authenticated;
-- `agy` available on `PATH`;
-- Codex, Claude Code, or both;
-- Git for implementation/diff verification.
-
-Check Antigravity availability:
+Confirm Antigravity is ready:
 
 ```bash
 agy models
 ```
 
-The integration uses Antigravity headless mode and expects JSON output with fields such as `status`, `response`, and `conversation_id`.
+## Installation
 
-For Claude Code, use a current release. The included skill uses `context: fork` with `agent: antigravity`, which is the documented mechanism for running a skill in an isolated subagent context.
+### Project-scoped
 
-### Workspace and headless permissions
+Copy the relevant hidden directories into your project root:
 
-Every adapter invocation passes the host's current project directory to Antigravity:
+| Host | Required files |
+|---|---|
+| Codex | `.agents/skills/antigravity-delegation/SKILL.md` and `.codex/agents/antigravity.toml` |
+| Claude Code | `.claude/skills/antigravity-delegation/SKILL.md` and `.claude/agents/antigravity.md` |
+
+Keep all four files when using both hosts. Start a new host session after installing or changing an agent definition.
+
+### Global
+
+Codex:
 
 ```bash
-agy -p "<PROMPT>" --add-dir "$PWD" ...
+mkdir -p ~/.agents/skills/antigravity-delegation ~/.codex/agents
+cp .agents/skills/antigravity-delegation/SKILL.md ~/.agents/skills/antigravity-delegation/SKILL.md
+cp .codex/agents/antigravity.toml ~/.codex/agents/antigravity.toml
 ```
 
-This prevents an Antigravity project retained from an earlier session from making the current repository appear to be outside the active workspace. File access inside the added workspace follows Antigravity's workspace policy.
+Claude Code:
 
-Shell commands still default to `Ask` in headless mode. If a delegated review must run Git or project checks, add only the required commands to `~/.gemini/antigravity-cli/settings.json`:
+```bash
+mkdir -p ~/.claude/skills/antigravity-delegation ~/.claude/agents
+cp .claude/skills/antigravity-delegation/SKILL.md ~/.claude/skills/antigravity-delegation/SKILL.md
+cp .claude/agents/antigravity.md ~/.claude/agents/antigravity.md
+```
+
+Restart the host session after installation.
+
+## Usage
+
+Choose one mode:
+
+| Mode | Behavior | Typical use |
+|---|---|---|
+| `consult` | Read-only | Architecture, planning, debugging hypotheses |
+| `review` | Read-only | Diff, correctness, security, or test review |
+| `implement` | Scoped writes | A bounded fix, refactor, or candidate implementation |
+
+### Codex
+
+Ask naturally:
+
+```text
+Use the antigravity-delegation skill in review mode.
+Ask Antigravity to review the authentication changes for correctness,
+race conditions, and missing tests. Verify its findings yourself.
+```
+
+### Claude Code
+
+Invoke the skill directly:
+
+```text
+/antigravity-delegation mode: review
+objective: Review the authentication changes for concurrency bugs.
+scope: src/auth/, tests/auth/
+constraints: Do not modify files.
+expected_output: Findings ranked by severity with file references.
+```
+
+Useful work-order fields:
+
+```text
+mode: consult | review | implement
+objective: exact task
+scope: allowed files or modules
+constraints: safety, compatibility, or product rules
+expected_output: required result
+antigravity_model: optional model override
+effort: low | medium | high
+```
+
+## Models
+
+| Role | Default |
+|---|---|
+| Codex adapter | `gpt-5.6-luna`, low reasoning |
+| Claude Code adapter | `haiku`, low effort |
+| Antigravity worker | `gemini-3.7-flash-high` |
+
+Override the worker only when needed:
+
+```text
+antigravity_model: gemini-3.7-flash-medium
+```
+
+Run `agy models` for currently available slugs. An invalid pinned model fails loudly instead of silently selecting another model.
+
+If a Codex runtime rejects the Luna override, remove these lines from `.codex/agents/antigravity.toml` so the adapter inherits the parent configuration:
+
+```toml
+model = "gpt-5.6-luna"
+model_reasoning_effort = "low"
+```
+
+## Workspace, permissions, and verification
+
+Every adapter invocation includes:
+
+```bash
+--add-dir "$PWD"
+```
+
+This makes the host's current project the active Antigravity workspace even when the CLI retained another project from an earlier session.
+
+Headless shell commands that require approval must be allowed explicitly in `~/.gemini/antigravity-cli/settings.json`. Keep permissions narrow:
 
 ```json
 {
@@ -113,388 +168,35 @@ Shell commands still default to `Ask` in headless mode. If a delegated review mu
 }
 ```
 
-Replace the test-command rule with the commands used by your project. A matching `deny` or `ask` rule takes precedence over `allow`, so keep broader conflicting rules out of the policy.
+Replace the project-command rule as needed. A matching `deny` or `ask` rule takes precedence over `allow`.
 
-Sources: [Antigravity headless mode](https://antigravity.google/docs/cli/headless/#permissions-in-headless-mode) and [fine-grained permissions](https://antigravity.google/docs/cli/permissions/).
+The adapters do not enable `--dangerously-skip-permissions`. They also prohibit commits, pushes, merges, deployments, publishing, branch deletion, and remote-state changes unless the parent task explicitly authorizes them.
 
-## Installation
-
-### Option A — Project-scoped installation
-
-Copy this repository's hidden directories into the root of your project.
-
-For **Codex**, keep:
-
-```text
-.agents/skills/antigravity-delegation/SKILL.md
-.codex/agents/antigravity.toml
-```
-
-For **Claude Code**, keep:
-
-```text
-.claude/skills/antigravity-delegation/SKILL.md
-.claude/agents/antigravity.md
-```
-
-If you use both tools on the same repository, keep all four files.
-
-Start a new Codex/Claude Code session after installing or changing custom agent definitions.
-
-### Option B — Global installation
-
-#### Codex
-
-```bash
-mkdir -p ~/.agents/skills/antigravity-delegation
-mkdir -p ~/.codex/agents
-
-cp .agents/skills/antigravity-delegation/SKILL.md \
-  ~/.agents/skills/antigravity-delegation/SKILL.md
-
-cp .codex/agents/antigravity.toml \
-  ~/.codex/agents/antigravity.toml
-```
-
-#### Claude Code
-
-```bash
-mkdir -p ~/.claude/skills/antigravity-delegation
-mkdir -p ~/.claude/agents
-
-cp .claude/skills/antigravity-delegation/SKILL.md \
-  ~/.claude/skills/antigravity-delegation/SKILL.md
-
-cp .claude/agents/antigravity.md \
-  ~/.claude/agents/antigravity.md
-```
-
-Restart the coding-agent session after installing the custom agent.
-
-## Delegation modes
-
-The integration defines three modes.
-
-### `consult`
-
-Read-only external reasoning.
-
-Use it for:
-
-- architecture;
-- debugging hypotheses;
-- design tradeoffs;
-- planning;
-- alternative approaches;
-- second opinions.
-
-### `review`
-
-Read-only external review.
-
-Use it for:
-
-- code review;
-- diff review;
-- security review;
-- regression-risk analysis;
-- test-coverage review;
-- implementation critique.
-
-### `implement`
-
-Allows Antigravity to produce a bounded candidate implementation.
-
-Use it only when external implementation is actually useful.
-
-The host agent must subsequently inspect:
-
-```bash
-git status --short
-git diff
-```
-
-and run relevant tests before accepting the changes.
-
-## Usage
-
-### Codex
-
-You can ask Codex naturally:
-
-```text
-Use the antigravity-delegation skill in review mode.
-Ask Antigravity to independently review the authentication changes for
-correctness, race conditions, and missing tests. Then verify its findings yourself.
-```
-
-A more structured work order:
-
-```text
-Use antigravity-delegation.
-
-mode: review
-objective: Review the new token refresh implementation for concurrency bugs.
-scope: src/auth/, tests/auth/
-constraints: Do not modify files.
-expected_output: Findings ranked by severity with concrete file references.
-effort: high
-```
-
-The expected flow is:
-
-```text
-Codex main
-  -> antigravity-delegation skill
-  -> Codex antigravity subagent
-  -> agy
-  -> structured report
-  -> Codex verification
-```
-
-### Claude Code
-
-Invoke the skill directly:
-
-```text
-/antigravity-delegation mode: review
-objective: Review the new token refresh implementation for concurrency bugs.
-scope: src/auth/, tests/auth/
-constraints: Do not modify files.
-expected_output: Findings ranked by severity with concrete file references.
-effort: high
-```
-
-Because the Claude Code skill uses `context: fork` and `agent: antigravity`, the work order runs in the isolated custom Antigravity adapter subagent and its concise result is returned to the main conversation.
-
-You can also ask Claude Code to use the skill when appropriate; the skill description allows model invocation.
-
-## Selecting an Antigravity model
-
-The adapters default to `gemini-3.7-flash-high`. This keeps substantive implementation work on the fast external worker while the host's larger model remains responsible for planning and verification.
-
-List available model slugs:
-
-```bash
-agy models
-```
-
-Include `antigravity_model` only when you want to override the default:
-
-```text
-antigravity_model: gemini-3.7-flash-medium
-```
-
-The adapter will invoke:
-
-```bash
-agy -p "<PROMPT>" \
-  --add-dir "$PWD" \
-  --model "gemini-3.7-flash-medium" \
-  --output-format json \
-  --effort high \
-  --print-timeout 10m
-```
-
-If an unknown model is pinned, Antigravity headless mode fails instead of silently selecting another model.
-
-## Result contract
-
-The platform-specific adapter returns a compact report:
-
-```text
-Status: SUCCESS | ERROR | BLOCKED
-Mode: consult | review | implement
-Antigravity model: ...
-Conversation ID: ...
-
-Summary:
-...
-
-Findings:
-- ...
-
-Files changed:
-- ...
-
-Verification performed:
-- ...
-
-Risks / unresolved questions:
-- ...
-```
-
-The raw external-model response is intentionally not dumped into the main context unless requested.
-
-## Verification model
-
-The host coding agent remains responsible for the final answer.
-
-A successful Antigravity result requires exit code `0`, JSON status `SUCCESS`, and a non-empty `response`. It means only that the external run completed successfully; it does **not** prove that the result is correct.
-
-For important claims, the host should verify against:
-
-- repository code;
-- tests;
-- build/lint/type-check results;
-- logs;
-- specifications;
-- authoritative documentation.
-
-For implementation tasks, the host should inspect the diff before accepting any change.
-
-## Permissions and safety
-
-The package intentionally does **not** enable:
-
-```bash
---dangerously-skip-permissions
-```
-
-by default.
-
-If Antigravity requires an operation that its headless permission policy blocks, configure the narrowest appropriate Antigravity permission instead of globally bypassing checks.
-
-The adapters also instruct Antigravity not to:
-
-- commit;
-- push;
-- merge;
-- deploy;
-- publish;
-- delete branches;
-- alter remote state;
-
-unless the parent task explicitly requires such an action.
-
-In `consult` and `review` modes, file modification is prohibited by instruction.
-
-## Cost and context strategy
-
-The extra subagent layer is intentional.
-
-Without isolation:
-
-```text
-main agent -> agy -> long external response -> main context
-```
-
-With this package:
-
-```text
-main agent
-   -> small adapter subagent
-      -> agy
-      -> potentially verbose external reasoning
-      -> compressed evidence report
-   -> main context
-```
-
-This reduces context pollution and lets the main coding agent spend its context on the repository and final verification.
-
-The adapter models are deliberately lightweight:
-
-- Codex adapter: `gpt-5.6-luna`, low reasoning;
-- Claude Code adapter: `haiku`, low effort.
-
-The external worker defaults to `gemini-3.7-flash-high` and performs the substantive delegated reasoning.
-
-### Codex model override compatibility
-
-If your Codex runtime rejects the custom Luna override, edit:
-
-```text
-.codex/agents/antigravity.toml
-```
-
-and remove:
-
-```toml
-model = "gpt-5.6-luna"
-model_reasoning_effort = "low"
-```
-
-The subagent will then inherit the parent Codex configuration.
+An Antigravity run is successful only when the process exits successfully, JSON `status` is `SUCCESS`, and `response` is non-empty. The main agent must still verify important claims against the repository, diff, tests, logs, or authoritative documentation.
 
 ## Troubleshooting
 
 ### `agy: command not found`
-
-Confirm that Antigravity CLI is installed and visible in the environment from which Codex or Claude Code is launched:
 
 ```bash
 which agy
 agy models
 ```
 
-### Antigravity returns `ERROR`
+Run these from the environment that launches Codex or Claude Code.
 
-Inspect:
+### Antigravity returns `ERROR` or `BLOCKED`
 
-- process exit code;
-- stderr;
-- JSON `error`;
-- the requested model slug;
-- Antigravity permission policy.
+Check the process exit code, `stderr`, JSON `error`, requested model slug, and Antigravity permission policy. Configure the narrowest missing permission instead of bypassing checks.
 
-Do not solve permission errors by automatically enabling `--dangerously-skip-permissions`.
+### The host cannot find the skill or adapter
 
-### Claude Code does not see the subagent
+Confirm the appropriate project or global paths from the installation table, then start a new host session. In Claude Code, inspect `/skills` and `/agents`.
 
-Check:
+## Documentation
 
-```text
-.claude/agents/antigravity.md
-```
-
-or:
-
-```text
-~/.claude/agents/antigravity.md
-```
-
-Then restart the Claude Code session and inspect `/agents`.
-
-### Claude Code does not see the skill
-
-Check:
-
-```text
-.claude/skills/antigravity-delegation/SKILL.md
-```
-
-or:
-
-```text
-~/.claude/skills/antigravity-delegation/SKILL.md
-```
-
-Then use `/skills` or invoke `/antigravity-delegation`.
-
-### Codex cannot spawn `antigravity`
-
-Confirm:
-
-```text
-.codex/agents/antigravity.toml
-```
-
-or:
-
-```text
-~/.codex/agents/antigravity.toml
-```
-
-is present. Start a new Codex session after adding the custom agent.
-
-If the error is specifically related to the custom adapter model, remove the model override as described above.
-
-## Design principles
-
-This package follows five rules:
-
-1. **External models are reviewers/workers, not authorities.**
-2. **The main coding agent owns the final decision.**
-3. **Consult and review are read-only by default.**
-4. **Implementation is bounded and diff-verified.**
-5. **Verbose external reasoning stays outside the main context whenever possible.**
+- [Antigravity headless mode](https://antigravity.google/docs/cli/headless/)
+- [Antigravity permissions](https://antigravity.google/docs/cli/permissions/)
+- [Codex subagents](https://learn.chatgpt.com/docs/agent-configuration/subagents)
+- [Claude Code skills](https://code.claude.com/docs/en/slash-commands)
+- [Claude Code subagents](https://code.claude.com/docs/en/sub-agents)

@@ -2,105 +2,160 @@
 
 [English](README.md) | **Türkçe**
 
-Google Antigravity CLI'yi **OpenAI Codex** veya **Claude Code** içerisinden harici bir kodlama/review ajanı olarak kullanır. Nihai doğrulama sorumluluğu ana kodlama ajanında kalır.
+Sınırları belirlenmiş kodlama, review, debugging veya mimari görevlerini **OpenAI Codex** ya da **Claude Code** üzerinden Google Antigravity CLI'ye delege eder. Ana ajan planlar ve doğrular; Antigravity bağımsız bir implementation veya ikinci görüş üretir.
 
-Paket iki platformda da aynı temel akışı uygular:
-
-```text
-Kullanıcı
-  │
-  ▼
-Codex / Claude Code ana ajanı
-  │
-  ▼
-Antigravity delegation skill
-  │
-  ▼
-Platforma özel Antigravity sub-agent
-  │
-  ▼
-agy --output-format json
-  │
-  ▼
-Antigravity üzerinde çalışan model
-  │
-  ▼
-Kısa ve yapılandırılmış bulgular
-  │
-  ▼
-Ana ajan repo durumunu, diff'i, testleri ve kanıtları doğrular
+```mermaid
+flowchart LR
+    A["Ana ajan<br/>Planlama ve doğrulama"] --> B["Adapter sub-agent<br/>Luna veya Haiku"]
+    B --> C["Antigravity CLI<br/>agy"]
+    C --> D["Gemini 3.7 Flash<br/>Implementation veya review"]
+    D -->|Yapılandırılmış sonuç| B
+    B -->|Kısa kanıt raporu| A
 ```
 
-Antigravity bilinçli olarak **bağımsız bir dış görüş** şeklinde değerlendirilir; doğruluğun kaynağı olarak kabul edilmez.
+## Nasıl çalışır?
 
-## Neden iki ayrı SKILL.md var?
+- Codex, proje skill'i ile low reasoning kullanan bir `gpt-5.6-luna` adapter çalıştırır.
+- Claude Code, fork edilmiş skill ile low effort kullanan bir `haiku` adapter çalıştırır.
+- İki adapter da asıl iş için varsayılan olarak `gemini-3.7-flash-high` kullanır.
+- `consult` ve `review` read-only'dir; `implement` yalnızca açıkça sınırlandırılmış değişikliklere izin verir.
+- Ana ajan, Antigravity sonucunu kabul etmeden önce doğrular.
 
-Codex ve Claude Code yeniden kullanılabilir skill yapılarını destekler. Claude Code ayrıca Agent Skills açık standardını kullanır. Buna rağmen iki host'un çalıştırma mekanizması tamamen aynı değildir.
+Codex ve Claude Code'un custom-agent mekanizmaları farklı olduğu için ayrı wrapper'lar gerekir. Workflow ve güvenlik kuralları ise aynıdır.
 
-Claude Code sürümü şu host-specific frontmatter alanlarını kullanır:
-
-```yaml
-context: fork
-agent: antigravity
-```
-
-Böylece skill izole edilmiş özel Claude Code `antigravity` sub-agent'ı içinde çalışır.
-
-Codex sürümü ise ana Codex ajanına bounded work order'ı özel `antigravity` Codex sub-agent'ına devretmesini söyler.
-
-Workflow ve güvenlik politikası aynı tutulmuştur. Ancak host'a özel alanların diğer platform tarafından sessizce görmezden gelineceğini varsaymamak için wrapper dosyaları ayrıdır.
-
-## Dosya yapısı
+## Dosyalar
 
 ```text
-.
-├── README.md
-├── README.tr.md
-├── .agents/
-│   └── skills/
-│       └── antigravity-delegation/
-│           └── SKILL.md
-├── .codex/
-│   └── agents/
-│       └── antigravity.toml
-└── .claude/
-    ├── skills/
-    │   └── antigravity-delegation/
-    │       └── SKILL.md
-    └── agents/
-        └── antigravity.md
+.agents/skills/antigravity-delegation/SKILL.md   # Codex skill
+.codex/agents/antigravity.toml                   # Codex adapter
+.claude/skills/antigravity-delegation/SKILL.md   # Claude Code skill
+.claude/agents/antigravity.md                    # Claude Code adapter
 ```
 
 ## Gereksinimler
 
-Şunlara ihtiyacın var:
+- Google Antigravity CLI kurulu ve authenticate edilmiş olmalı
+- `agy` komutu `PATH` üzerinde bulunmalı
+- Codex, Claude Code veya ikisi birden
+- Implementation görevlerinde diff doğrulaması için Git
 
-- Google Antigravity CLI kurulu ve authenticate edilmiş olmalı;
-- `agy` komutu `PATH` üzerinde bulunmalı;
-- Codex, Claude Code veya ikisi birden;
-- implementation/diff doğrulaması için Git.
-
-Antigravity erişimini kontrol et:
+Antigravity'nin hazır olduğunu doğrula:
 
 ```bash
 agy models
 ```
 
-Entegrasyon Antigravity headless mode kullanır ve `status`, `response`, `conversation_id` gibi alanları içeren JSON çıktısı bekler.
+## Kurulum
 
-Claude Code tarafında güncel bir sürüm kullan. Paketteki skill, bir skill'i izole sub-agent context'inde çalıştırmak için dokümante edilmiş mekanizma olan `context: fork` ile `agent: antigravity` kullanır.
+### Proje bazlı
 
-### Workspace ve headless izinleri
+İlgili gizli klasörleri projenin root dizinine kopyala:
 
-Her adapter çağrısı host'un mevcut proje dizinini Antigravity'ye aktarır:
+| Host | Gerekli dosyalar |
+|---|---|
+| Codex | `.agents/skills/antigravity-delegation/SKILL.md` ve `.codex/agents/antigravity.toml` |
+| Claude Code | `.claude/skills/antigravity-delegation/SKILL.md` ve `.claude/agents/antigravity.md` |
+
+İki host'u da kullanıyorsan dört dosyanın tamamını tut. Kurulumdan veya agent tanımı değişikliğinden sonra yeni bir host session başlat.
+
+### Global
+
+Codex:
 
 ```bash
-agy -p "<PROMPT>" --add-dir "$PWD" ...
+mkdir -p ~/.agents/skills/antigravity-delegation ~/.codex/agents
+cp .agents/skills/antigravity-delegation/SKILL.md ~/.agents/skills/antigravity-delegation/SKILL.md
+cp .codex/agents/antigravity.toml ~/.codex/agents/antigravity.toml
 ```
 
-Böylece önceki bir oturumdan kalan Antigravity projesi, mevcut repository'nin aktif workspace dışında görünmesine neden olmaz. Eklenen workspace içindeki dosya erişimleri Antigravity'nin workspace politikasını izler.
+Claude Code:
 
-Shell komutları headless modda yine varsayılan olarak `Ask` kullanır. Delegated review Git veya proje kontrolleri çalıştıracaksa yalnızca gerekli komutları `~/.gemini/antigravity-cli/settings.json` dosyasına ekle:
+```bash
+mkdir -p ~/.claude/skills/antigravity-delegation ~/.claude/agents
+cp .claude/skills/antigravity-delegation/SKILL.md ~/.claude/skills/antigravity-delegation/SKILL.md
+cp .claude/agents/antigravity.md ~/.claude/agents/antigravity.md
+```
+
+Kurulumdan sonra host session'ını yeniden başlat.
+
+## Kullanım
+
+Bir mod seç:
+
+| Mod | Davranış | Tipik kullanım |
+|---|---|---|
+| `consult` | Read-only | Mimari, planlama, debugging hipotezleri |
+| `review` | Read-only | Diff, doğruluk, güvenlik veya test incelemesi |
+| `implement` | Sınırlandırılmış yazma | Bounded fix, refactor veya aday implementation |
+
+### Codex
+
+Doğal dille iste:
+
+```text
+Use the antigravity-delegation skill in review mode.
+Ask Antigravity to review the authentication changes for correctness,
+race conditions, and missing tests. Verify its findings yourself.
+```
+
+### Claude Code
+
+Skill'i doğrudan çağır:
+
+```text
+/antigravity-delegation mode: review
+objective: Review the authentication changes for concurrency bugs.
+scope: src/auth/, tests/auth/
+constraints: Do not modify files.
+expected_output: Findings ranked by severity with file references.
+```
+
+Kullanışlı work-order alanları:
+
+```text
+mode: consult | review | implement
+objective: net görev
+scope: izin verilen dosyalar veya modüller
+constraints: güvenlik, uyumluluk veya ürün kuralları
+expected_output: gerekli sonuç
+antigravity_model: isteğe bağlı model override'ı
+effort: low | medium | high
+```
+
+## Modeller
+
+| Rol | Varsayılan |
+|---|---|
+| Codex adapter | `gpt-5.6-luna`, low reasoning |
+| Claude Code adapter | `haiku`, low effort |
+| Antigravity worker | `gemini-3.7-flash-high` |
+
+Worker modelini yalnızca gerektiğinde değiştir:
+
+```text
+antigravity_model: gemini-3.7-flash-medium
+```
+
+Güncel model slug'ları için `agy models` çalıştır. Geçersiz bir pinned model, sessizce başka model seçmek yerine açıkça hata verir.
+
+Codex runtime Luna override'ını reddederse adapter'ın parent konfigürasyonunu inherit etmesi için `.codex/agents/antigravity.toml` içindeki şu satırları kaldır:
+
+```toml
+model = "gpt-5.6-luna"
+model_reasoning_effort = "low"
+```
+
+## Workspace, izinler ve doğrulama
+
+Her adapter çağrısı şunu içerir:
+
+```bash
+--add-dir "$PWD"
+```
+
+Böylece CLI önceki bir session'dan farklı bir proje tutmuş olsa bile host'un mevcut projesi aktif Antigravity workspace'i olur.
+
+Onay gerektiren headless shell komutları `~/.gemini/antigravity-cli/settings.json` içinde açıkça izinli olmalıdır. İzinleri dar tut:
 
 ```json
 {
@@ -113,384 +168,35 @@ Shell komutları headless modda yine varsayılan olarak `Ask` kullanır. Delegat
 }
 ```
 
-Test komutu kuralını projenin kullandığı komutlarla değiştir. Eşleşen bir `deny` veya `ask` kuralı `allow` kuralından önceliklidir; daha geniş çakışan kurallar bırakma.
+Proje komutu kuralını gerektiği gibi değiştir. Eşleşen bir `deny` veya `ask` kuralı `allow` kuralından önceliklidir.
 
-Kaynaklar: [Antigravity headless mode](https://antigravity.google/docs/cli/headless/#permissions-in-headless-mode) ve [fine-grained permissions](https://antigravity.google/docs/cli/permissions/).
+Adapter'lar `--dangerously-skip-permissions` kullanmaz. Parent görev açıkça yetki vermedikçe commit, push, merge, deployment, yayınlama, branch silme ve remote-state değişikliklerini de yasaklar.
 
-## Kurulum
-
-### Seçenek A — Proje bazlı kurulum
-
-Bu paketteki gizli klasörleri projenin root dizinine kopyala.
-
-**Codex** için:
-
-```text
-.agents/skills/antigravity-delegation/SKILL.md
-.codex/agents/antigravity.toml
-```
-
-**Claude Code** için:
-
-```text
-.claude/skills/antigravity-delegation/SKILL.md
-.claude/agents/antigravity.md
-```
-
-Aynı repo üzerinde iki aracı da kullanıyorsan dört dosyanın tamamını tut.
-
-Custom agent tanımlarını ekledikten veya değiştirdikten sonra yeni bir Codex/Claude Code session başlat.
-
-### Seçenek B — Global kurulum
-
-#### Codex
-
-```bash
-mkdir -p ~/.agents/skills/antigravity-delegation
-mkdir -p ~/.codex/agents
-
-cp .agents/skills/antigravity-delegation/SKILL.md \
-  ~/.agents/skills/antigravity-delegation/SKILL.md
-
-cp .codex/agents/antigravity.toml \
-  ~/.codex/agents/antigravity.toml
-```
-
-#### Claude Code
-
-```bash
-mkdir -p ~/.claude/skills/antigravity-delegation
-mkdir -p ~/.claude/agents
-
-cp .claude/skills/antigravity-delegation/SKILL.md \
-  ~/.claude/skills/antigravity-delegation/SKILL.md
-
-cp .claude/agents/antigravity.md \
-  ~/.claude/agents/antigravity.md
-```
-
-Custom agent kurulumundan sonra kodlama ajanı session'ını yeniden başlat.
-
-## Delegation modları
-
-Entegrasyon üç mod tanımlar.
-
-### `consult`
-
-Salt okunur bağımsız reasoning.
-
-Şunlar için kullan:
-
-- mimari;
-- debugging hipotezleri;
-- tasarım trade-off'ları;
-- planlama;
-- alternatif yaklaşımlar;
-- ikinci görüş.
-
-### `review`
-
-Salt okunur dış review.
-
-Şunlar için kullan:
-
-- code review;
-- diff review;
-- security review;
-- regression riski analizi;
-- test coverage incelemesi;
-- implementation eleştirisi.
-
-### `implement`
-
-Antigravity'nin bounded bir aday implementation üretmesine izin verir.
-
-Sadece gerçekten dış bir implementation faydalı olacaksa kullan.
-
-Ardından host ajan mutlaka şunları incelemelidir:
-
-```bash
-git status --short
-git diff
-```
-
-ve değişiklikleri kabul etmeden önce ilgili testleri çalıştırmalıdır.
-
-## Kullanım
-
-### Codex
-
-Codex'e doğal dille söyleyebilirsin:
-
-```text
-Use the antigravity-delegation skill in review mode.
-Ask Antigravity to independently review the authentication changes for
-correctness, race conditions, and missing tests. Then verify its findings yourself.
-```
-
-Daha yapılandırılmış bir work order:
-
-```text
-Use antigravity-delegation.
-
-mode: review
-objective: Review the new token refresh implementation for concurrency bugs.
-scope: src/auth/, tests/auth/
-constraints: Do not modify files.
-expected_output: Findings ranked by severity with concrete file references.
-effort: high
-```
-
-Beklenen akış:
-
-```text
-Codex main
-  -> antigravity-delegation skill
-  -> Codex antigravity sub-agent
-  -> agy
-  -> yapılandırılmış rapor
-  -> Codex doğrulaması
-```
-
-### Claude Code
-
-Skill'i doğrudan çağır:
-
-```text
-/antigravity-delegation mode: review
-objective: Review the new token refresh implementation for concurrency bugs.
-scope: src/auth/, tests/auth/
-constraints: Do not modify files.
-expected_output: Findings ranked by severity with concrete file references.
-effort: high
-```
-
-Claude Code skill'inde `context: fork` ve `agent: antigravity` bulunduğu için work order izole edilmiş özel Antigravity adapter sub-agent'ında çalışır ve kısa sonuç ana konuşmaya döner.
-
-Claude Code'un gerektiğinde skill'i otomatik kullanmasını da isteyebilirsin; skill açıklaması model invocation'a açıktır.
-
-## Antigravity modeli seçmek
-
-Adapter'lar varsayılan olarak `gemini-3.7-flash-high` kullanır. Böylece asıl implementation işi hızlı dış worker'da kalırken host'un büyük modeli planlama ve doğrulamadan sorumlu olur.
-
-Kullanılabilir model slug'larını listele:
-
-```bash
-agy models
-```
-
-Yalnızca varsayılanı değiştirmek istediğinde work order'a `antigravity_model` ekle:
-
-```text
-antigravity_model: gemini-3.7-flash-medium
-```
-
-Adapter şu çağrıyı üretir:
-
-```bash
-agy -p "<PROMPT>" \
-  --add-dir "$PWD" \
-  --model "gemini-3.7-flash-medium" \
-  --output-format json \
-  --effort high \
-  --print-timeout 10m
-```
-
-Bilinmeyen bir model pinlenirse Antigravity headless mode sessizce başka modele geçmek yerine hata verir.
-
-## Sonuç sözleşmesi
-
-Platforma özel adapter kısa bir rapor döndürür:
-
-```text
-Status: SUCCESS | ERROR | BLOCKED
-Mode: consult | review | implement
-Antigravity model: ...
-Conversation ID: ...
-
-Summary:
-...
-
-Findings:
-- ...
-
-Files changed:
-- ...
-
-Verification performed:
-- ...
-
-Risks / unresolved questions:
-- ...
-```
-
-Açıkça istenmediği sürece dış modelin ham ve uzun cevabı ana context'e taşınmaz.
-
-## Doğrulama modeli
-
-Nihai cevaptan host kodlama ajanı sorumludur.
-
-Başarılı bir Antigravity sonucu exit code `0`, JSON status `SUCCESS` ve boş olmayan bir `response` gerektirir. Bu yalnızca dış çalıştırmanın tamamlandığı anlamına gelir; sonucun doğru olduğunu kanıtlamaz.
-
-Önemli iddialar şu kaynaklarla doğrulanmalıdır:
-
-- repository kodu;
-- testler;
-- build/lint/type-check sonuçları;
-- loglar;
-- spesifikasyonlar;
-- otoritatif dokümantasyon.
-
-Implementation görevlerinde herhangi bir değişiklik kabul edilmeden önce diff incelenmelidir.
-
-## İzinler ve güvenlik
-
-Paket varsayılan olarak şunu etkinleştirmez:
-
-```bash
---dangerously-skip-permissions
-```
-
-Antigravity headless permission policy bir işlemi engelliyorsa tüm kontrolleri bypass etmek yerine gerekli en dar Antigravity izni yapılandırılmalıdır.
-
-Adapter'lar ayrıca parent görev açıkça istemediği sürece Antigravity'nin şunları yapmasını yasaklar:
-
-- commit;
-- push;
-- merge;
-- deploy;
-- publish;
-- branch silme;
-- remote state değiştirme.
-
-`consult` ve `review` modlarında dosya değiştirmek talimat seviyesinde yasaktır.
-
-## Maliyet ve context stratejisi
-
-Ek sub-agent katmanı bilinçli bir tasarımdır.
-
-İzolasyon olmadan:
-
-```text
-ana ajan -> agy -> uzun dış model cevabı -> ana context
-```
-
-Bu paketle:
-
-```text
-ana ajan
-   -> küçük adapter sub-agent
-      -> agy
-      -> potansiyel olarak uzun dış reasoning
-      -> sıkıştırılmış kanıt raporu
-   -> ana context
-```
-
-Böylece ana context gereksiz dış model çıktılarıyla doldurulmaz ve ana kodlama ajanı context'ini repo ve nihai doğrulama için kullanabilir.
-
-Adapter modelleri bilinçli olarak hafiftir:
-
-- Codex adapter: `gpt-5.6-luna`, low reasoning;
-- Claude Code adapter: `haiku`, low effort.
-
-Asıl delegated reasoning'i varsayılan olarak `gemini-3.7-flash-high` kullanan dış worker yapar.
-
-### Codex model override uyumluluğu
-
-Codex runtime özel Luna override'ını reddederse şu dosyayı düzenle:
-
-```text
-.codex/agents/antigravity.toml
-```
-
-ve şu satırları kaldır:
-
-```toml
-model = "gpt-5.6-luna"
-model_reasoning_effort = "low"
-```
-
-Sub-agent parent Codex konfigürasyonunu inherit eder.
+Bir Antigravity çalıştırması yalnızca process başarıyla sonlandığında, JSON `status` değeri `SUCCESS` olduğunda ve `response` boş olmadığında başarılıdır. Ana ajan yine de önemli iddiaları repository, diff, testler, loglar veya otoritatif dokümantasyon üzerinden doğrulamalıdır.
 
 ## Sorun giderme
 
 ### `agy: command not found`
-
-Antigravity CLI'nin kurulu olduğunu ve Codex/Claude Code'un başladığı environment içinde göründüğünü kontrol et:
 
 ```bash
 which agy
 agy models
 ```
 
-### Antigravity `ERROR` döndürüyor
+Bu komutları Codex veya Claude Code'u başlatan environment içinde çalıştır.
 
-Şunları incele:
+### Antigravity `ERROR` veya `BLOCKED` döndürüyor
 
-- process exit code;
-- stderr;
-- JSON `error`;
-- istenen model slug'ı;
-- Antigravity permission policy.
+Process exit code, `stderr`, JSON `error`, istenen model slug'ı ve Antigravity permission policy'yi kontrol et. Kontrolleri bypass etmek yerine eksik olan en dar izni yapılandır.
 
-Permission sorunlarını otomatik olarak `--dangerously-skip-permissions` açarak çözme.
+### Host skill veya adapter'ı bulamıyor
 
-### Claude Code sub-agent'ı görmüyor
+Kurulum tablosundaki proje ya da global path'leri doğrula ve yeni bir host session başlat. Claude Code tarafında `/skills` ve `/agents` ekranlarını kontrol et.
 
-Şunu kontrol et:
+## Dokümantasyon
 
-```text
-.claude/agents/antigravity.md
-```
-
-veya:
-
-```text
-~/.claude/agents/antigravity.md
-```
-
-Ardından Claude Code session'ını yeniden başlat ve `/agents` üzerinden kontrol et.
-
-### Claude Code skill'i görmüyor
-
-Şunu kontrol et:
-
-```text
-.claude/skills/antigravity-delegation/SKILL.md
-```
-
-veya:
-
-```text
-~/.claude/skills/antigravity-delegation/SKILL.md
-```
-
-Ardından `/skills` kullan veya `/antigravity-delegation` çağır.
-
-### Codex `antigravity` sub-agent'ını spawn edemiyor
-
-Şunun mevcut olduğunu doğrula:
-
-```text
-.codex/agents/antigravity.toml
-```
-
-veya:
-
-```text
-~/.codex/agents/antigravity.toml
-```
-
-Custom agent'ı ekledikten sonra yeni Codex session başlat.
-
-Hata özellikle adapter model override'ıyla ilgiliyse yukarıda anlatıldığı gibi model satırlarını kaldır.
-
-## Tasarım ilkeleri
-
-Paket beş kurala dayanır:
-
-1. **Dış modeller reviewer/worker'dır; otorite değildir.**
-2. **Nihai karar ana kodlama ajanına aittir.**
-3. **Consult ve review varsayılan olarak read-only'dir.**
-4. **Implementation bounded'dır ve diff ile doğrulanır.**
-5. **Uzun dış reasoning mümkün olduğunca ana context'in dışında tutulur.**
+- [Antigravity headless mode](https://antigravity.google/docs/cli/headless/)
+- [Antigravity permissions](https://antigravity.google/docs/cli/permissions/)
+- [Codex subagents](https://learn.chatgpt.com/docs/agent-configuration/subagents)
+- [Claude Code skills](https://code.claude.com/docs/en/slash-commands)
+- [Claude Code subagents](https://code.claude.com/docs/en/sub-agents)
