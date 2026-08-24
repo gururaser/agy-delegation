@@ -1,17 +1,34 @@
 ---
 name: antigravity-delegation
-description: Delegates a bounded coding, review, debugging, architecture, or second-opinion task to Google Antigravity CLI in an isolated custom subagent. Use when an independent external-model perspective would improve confidence, catch mistakes, compare approaches, or produce a candidate implementation. Invoke with a self-contained work order as arguments.
+description: Delegates a bounded coding, review, debugging, architecture, or second-opinion task to Google Antigravity CLI in an isolated custom subagent. Use when an independent external-model perspective would improve confidence, catch mistakes, compare approaches, or produce a candidate implementation. Invoke with a self-contained, ready-to-send prompt supplied by the parent.
 context: fork
 agent: antigravity
 ---
 
 # Antigravity Delegation
 
-Execute the following work order through Google Antigravity CLI:
+Execute the following parent-authored work order through Google Antigravity CLI:
 
 $ARGUMENTS
 
 ## Work-order interpretation
+
+The parent must inspect the relevant repository context before invoking this skill
+and supply:
+
+```text
+mode: consult | review | implement
+prompt: |
+  <complete, ready-to-send Antigravity prompt>
+antigravity_model: <optional model slug>
+effort: <optional low | medium | high>
+```
+
+The prompt must already contain the exact objective, relevant repository context
+and paths, constraints, evidence, required output, and mode-specific write rules.
+Do not discover missing task context or turn an incomplete request into a new
+prompt. Ask the parent to provide a complete work order when required information
+is absent.
 
 Determine the mode from the work order:
 
@@ -25,7 +42,7 @@ The parent Claude Code conversation remains the orchestrator and final decision-
 
 ## Delegation requirements
 
-1. Convert the work order into a precise Antigravity prompt.
+1. Extract and preserve the parent-authored Antigravity prompt.
 2. Keep the delegated scope bounded.
 3. Use Antigravity headless mode with machine-readable JSON output.
 4. Validate both the process result and Antigravity's JSON status.
@@ -39,12 +56,12 @@ The parent Claude Code conversation remains the orchestrator and final decision-
 - Read-only.
 - Antigravity may inspect relevant repository files.
 - Do not intentionally modify workspace files.
-- Ask for concrete conclusions, alternatives, assumptions, and evidence.
+- Require the parent prompt to ask for concrete conclusions, alternatives, assumptions, and evidence.
 
 ### `review`
 
 - Read-only.
-- Ask Antigravity to cite concrete file paths, symbols, tests, or behaviors.
+- Require the parent prompt to ask for concrete file paths, symbols, tests, or behaviors.
 - Prioritize correctness, security, regression risk, and missing verification over style.
 - Do not intentionally modify workspace files.
 
@@ -53,6 +70,7 @@ The parent Claude Code conversation remains the orchestrator and final decision-
 Use only if the work order explicitly allows changes.
 
 - Restrict changes to the stated scope.
+- Require the parent prompt to state the exact allowed scope.
 - Do not commit, push, merge, publish, deploy, or alter remote state.
 - Preserve unrelated user changes.
 - After Antigravity finishes, inspect `git status --short` and `git diff`.
@@ -90,9 +108,9 @@ Never use `--dangerously-skip-permissions` by default. A permission failure is a
 
 Do not use `stream-json` unless the work order genuinely requires a multi-turn Antigravity conversation.
 
-## Antigravity prompt shape
+## Required parent prompt shape
 
-Build a self-contained prompt with:
+Require the parent-authored prompt to be self-contained:
 
 ```text
 ROLE
@@ -129,7 +147,9 @@ RULES
 - Do not commit, push, merge, publish, deploy, or alter remote state.
 ```
 
-Send only task-relevant context. Do not forward hidden chain-of-thought or unrelated conversation history.
+Pass the prompt to `agy` without adding task context, changing its objective, or
+rewriting its requirements. Mechanical transport escaping is allowed. Reject a
+prompt that lacks the context needed to execute the task.
 
 ## Result validation
 

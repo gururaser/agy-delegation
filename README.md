@@ -19,7 +19,7 @@ flowchart LR
 - Claude Code uses a forked skill plus a `haiku` adapter with low effort.
 - Both adapters default to `gemini-3.7-flash-high` for substantive work.
 - `consult` and `review` are read-only; `implement` allows only explicitly scoped edits.
-- The main agent verifies Antigravity's result before accepting it.
+- The main agent inspects the relevant context, writes the complete Antigravity prompt, and verifies the result before accepting it.
 
 Codex and Claude Code need separate wrappers because their custom-agent mechanisms differ. The workflow and safety rules remain equivalent.
 
@@ -104,20 +104,22 @@ Invoke the skill directly:
 
 ```text
 /antigravity-delegation mode: review
-objective: Review the authentication changes for concurrency bugs.
-scope: src/auth/, tests/auth/
-constraints: Do not modify files.
-expected_output: Findings ranked by severity with file references.
+prompt: |
+  Review the authentication changes for concurrency bugs.
+  Inspect src/auth/ and tests/auth/. Do not modify files.
+  Return findings ranked by severity with file references and concrete evidence.
 ```
 
-Useful work-order fields:
+The main agent must inspect the relevant repository context and write the complete,
+ready-to-send Antigravity prompt. The adapter transports that prompt; it does not
+discover missing context or rewrite the task.
+
+Work-order fields:
 
 ```text
 mode: consult | review | implement
-objective: exact task
-scope: allowed files or modules
-constraints: safety, compatibility, or product rules
-expected_output: required result
+prompt: complete prompt containing the objective, relevant context and paths,
+        constraints, evidence, required output, and write rules
 antigravity_model: optional model override
 effort: low | medium | high
 ```

@@ -19,7 +19,7 @@ flowchart LR
 - Claude Code, fork edilmiş skill ile low effort kullanan bir `haiku` adapter çalıştırır.
 - İki adapter da asıl iş için varsayılan olarak `gemini-3.7-flash-high` kullanır.
 - `consult` ve `review` read-only'dir; `implement` yalnızca açıkça sınırlandırılmış değişikliklere izin verir.
-- Ana ajan, Antigravity sonucunu kabul etmeden önce doğrular.
+- Ana ajan ilgili bağlamı inceler, eksiksiz Antigravity promptunu yazar ve sonucu kabul etmeden önce doğrular.
 
 Codex ve Claude Code'un custom-agent mekanizmaları farklı olduğu için ayrı wrapper'lar gerekir. Workflow ve güvenlik kuralları ise aynıdır.
 
@@ -104,20 +104,22 @@ Skill'i doğrudan çağır:
 
 ```text
 /antigravity-delegation mode: review
-objective: Review the authentication changes for concurrency bugs.
-scope: src/auth/, tests/auth/
-constraints: Do not modify files.
-expected_output: Findings ranked by severity with file references.
+prompt: |
+  Kimlik doğrulama değişikliklerini concurrency bug'ları için incele.
+  src/auth/ ve tests/auth/ yollarını incele. Dosyaları değiştirme.
+  Bulguları dosya referansları ve somut kanıtlarla önem sırasına göre döndür.
 ```
 
-Kullanışlı work-order alanları:
+Ana ajan ilgili repository bağlamını incelemeli ve doğrudan Antigravity'ye
+gönderilmeye hazır, eksiksiz promptu yazmalıdır. Adapter bu promptu taşır; eksik
+bağlamı keşfetmez veya görevi yeniden yazmaz.
+
+Work-order alanları:
 
 ```text
 mode: consult | review | implement
-objective: net görev
-scope: izin verilen dosyalar veya modüller
-constraints: güvenlik, uyumluluk veya ürün kuralları
-expected_output: gerekli sonuç
+prompt: amaç, ilgili bağlam ve yollar, kısıtlar, kanıtlar, beklenen çıktı ve
+        yazma kurallarını içeren eksiksiz prompt
 antigravity_model: isteğe bağlı model override'ı
 effort: low | medium | high
 ```

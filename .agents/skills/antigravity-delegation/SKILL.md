@@ -25,8 +25,8 @@ Do not delegate merely to create more agent activity. Delegation must have a con
 
 Use this flow:
 
-1. Main Codex agent identifies a bounded task.
-2. Main Codex agent delegates that task to the custom subagent named `antigravity`.
+1. Main Codex agent inspects the relevant repository context and identifies a bounded task.
+2. Main Codex agent writes the complete Antigravity prompt and delegates it to the custom subagent named `antigravity`.
 3. The `antigravity` subagent invokes `agy` in headless mode.
 4. The subagent validates the Antigravity run and returns a concise evidence-focused report.
 5. Main Codex independently inspects the relevant repository state, tests, logs, or diff.
@@ -90,18 +90,24 @@ After the subagent returns, the main Codex agent must inspect the resulting chan
 
 ## What to Send to the Subagent
 
-Give the `antigravity` subagent a self-contained work order containing:
+The main Codex agent owns context selection and prompt construction. Before
+delegating, inspect the relevant repository state and give the `antigravity`
+subagent a self-contained work order containing:
 
 - `mode`: `consult`, `review`, or `implement`;
-- `objective`: the exact question or task;
-- `scope`: relevant files, modules, services, or repository areas;
-- `constraints`: compatibility, style, performance, API, security, or product constraints;
-- `evidence`: relevant error messages, test failures, user requirements, or current implementation facts;
-- `expected_output`: what the main agent needs back;
+- `prompt`: the complete, ready-to-send Antigravity prompt;
 - `antigravity_model`: optional model slug; defaults to `gemini-3.7-flash-high`;
 - `effort`: optional `low`, `medium`, or `high`; default to `high` for substantive technical work.
 
-Do not forward hidden chain-of-thought or irrelevant conversation history. Send only the task context necessary for the external model to perform the work.
+The prompt must already contain the exact objective, relevant repository context
+and paths, constraints, evidence, required output, and mode-specific write rules.
+The adapter must not discover missing task context or rewrite an incomplete request
+into a better prompt. If required context is missing, fix the parent work order
+before spawning the adapter.
+
+Do not forward hidden chain-of-thought, secrets, or irrelevant conversation
+history. Include only the task context necessary for the external model to perform
+the work.
 
 ## Expected Subagent Return
 
