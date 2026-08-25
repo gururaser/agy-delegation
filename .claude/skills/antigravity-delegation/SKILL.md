@@ -1,206 +1,157 @@
 ---
 name: antigravity-delegation
-description: Delegates a bounded coding, review, debugging, architecture, or second-opinion task to Google Antigravity CLI in an isolated custom subagent. Use when an independent external-model perspective would improve confidence, catch mistakes, compare approaches, or produce a candidate implementation. Invoke with a self-contained, ready-to-send prompt supplied by the parent.
-context: fork
-agent: antigravity
+description: Send a bounded coding, review, debugging, architecture, or second-opinion task directly from the main Claude Code conversation to Google Antigravity CLI in headless mode. Use when an independent external-model perspective would materially improve confidence.
 ---
 
 # Antigravity Delegation
 
-Execute the following parent-authored work order through Google Antigravity CLI:
+Execute this work order directly from the main Claude Code conversation. Do not
+spawn a Claude Code subagent:
 
 $ARGUMENTS
 
-## Work-order interpretation
+Antigravity output is advisory until the main conversation independently verifies
+its material claims.
 
-The parent must inspect the relevant repository context before invoking this skill
-and supply:
+## Work order
+
+Expect:
 
 ```text
 mode: consult | review | implement
 prompt: |
   <complete, ready-to-send Antigravity prompt>
-antigravity_model: <optional model slug>
-effort: <optional low | medium | high>
+antigravity_model: <optional base model name; default gemini-3.7-flash>
+effort: <optional low | medium | high; default high>
 ```
 
-The prompt must already contain the exact objective, relevant repository context
-and paths, constraints, evidence, required output, and mode-specific write rules.
-Do not discover missing task context or turn an incomplete request into a new
-prompt. Ask the parent to provide a complete work order when required information
-is absent.
+If `mode` is omitted, use `consult`. Inspect the relevant repository context and
+complete any missing prompt context before invoking Antigravity. Do not forward
+hidden chain-of-thought, secrets, or irrelevant conversation history. Keep the
+base model and reasoning effort separate. The default invocation uses model
+`gemini-3.7-flash` with `effort: high`. Check `agy models` instead of guessing an
+unavailable model or effort combination.
 
-Determine the mode from the work order:
+## Workflow
 
-- `consult`: independent reasoning, debugging hypotheses, architecture, planning, or tradeoffs.
-- `review`: code, diff, test, security, or implementation review.
-- `implement`: a bounded implementation explicitly allowed to modify the workspace.
-
-If the caller does not specify a mode, use `consult`.
-
-The parent Claude Code conversation remains the orchestrator and final decision-maker. Antigravity output is advisory until independently verified by the parent.
-
-## Delegation requirements
-
-1. Extract and preserve the parent-authored Antigravity prompt.
-2. Keep the delegated scope bounded.
-3. Use Antigravity headless mode with machine-readable JSON output.
-4. Validate both the process result and Antigravity's JSON status.
-5. Return a concise evidence-focused report rather than the full raw response.
-6. Never treat Antigravity's answer as ground truth.
+1. Build a self-contained prompt with the objective, scope, constraints,
+   evidence, required output, and write rules.
+2. Invoke `agy` once in headless JSON mode from the current workspace.
+3. Validate the process result, JSON status, response, and permission diagnostics.
+4. Expose only `.response` from a clean successful run.
+5. Verify important claims, tests, and workspace changes before accepting them.
 
 ## Mode rules
 
 ### `consult`
 
-- Read-only.
-- Antigravity may inspect relevant repository files.
-- Do not intentionally modify workspace files.
-- Require the parent prompt to ask for concrete conclusions, alternatives, assumptions, and evidence.
+- Use for architecture, debugging hypotheses, alternatives, planning, or tradeoffs.
+- Tell Antigravity the task is read-only and files must not be modified.
+- Require concrete conclusions, assumptions, and evidence.
 
 ### `review`
 
-- Read-only.
-- Require the parent prompt to ask for concrete file paths, symbols, tests, or behaviors.
-- Prioritize correctness, security, regression risk, and missing verification over style.
-- Do not intentionally modify workspace files.
+- Use for code, diff, test, security, or regression review.
+- Tell Antigravity the task is read-only and files must not be modified.
+- Require prioritized findings with file paths, symbols, tests, or observed behavior.
 
 ### `implement`
 
-Use only if the work order explicitly allows changes.
-
-- Restrict changes to the stated scope.
-- Require the parent prompt to state the exact allowed scope.
-- Do not commit, push, merge, publish, deploy, or alter remote state.
+- Use only when the user explicitly authorizes workspace changes.
+- State the exact allowed scope and prohibit unrelated changes.
+- Prohibit commits, pushes, merges, publishing, deployment, branch deletion, and
+  remote-state changes unless the user explicitly requests them.
 - Preserve unrelated user changes.
-- After Antigravity finishes, inspect `git status --short` and `git diff`.
-- Report every observed changed file to the parent.
+- After the run, inspect `git status --short` and `git diff`, then run the
+  narrowest relevant verification before broader checks.
 
-## Antigravity CLI
+## Required Antigravity prompt
 
-Preferred single-run form:
-
-```bash
-agy -p "<PROMPT>" \
-  --add-dir "$PWD" \
-  --model "gemini-3.7-flash-high" \
-  --output-format json \
-  --effort high \
-  --print-timeout 10m
-```
-
-If the work order specifies a different `antigravity_model`, replace the default slug:
-
-```bash
-agy -p "<PROMPT>" \
-  --add-dir "$PWD" \
-  --model "<MODEL_SLUG>" \
-  --output-format json \
-  --effort high \
-  --print-timeout 10m
-```
-
-If the work order specifies `effort`, use `low`, `medium`, or `high` accordingly.
-
-Default `antigravity_model` to `gemini-3.7-flash-high`. Available model slugs can be inspected with `agy models`.
-
-Never use `--dangerously-skip-permissions` by default. A permission failure is a blocker to report, not a reason to bypass controls.
-
-Do not use `stream-json` unless the work order genuinely requires a multi-turn Antigravity conversation.
-
-## Required parent prompt shape
-
-Require the parent-authored prompt to be self-contained:
+Use this shape:
 
 ```text
 ROLE
-You are an independent coding agent providing work to another coding agent that will verify your result.
+You are an independent coding agent providing work to another coding agent that
+will verify your result.
 
 MODE
 <consult | review | implement>
 
 OBJECTIVE
-<exact delegated task>
+<exact task>
 
 SCOPE
-<relevant files, modules, services, or repository areas>
+<files, modules, services, or repository areas>
 
 CONSTRAINTS
-<technical, compatibility, safety, performance, API, or product constraints>
+<technical and behavioral constraints>
 
 EVIDENCE
-<errors, failing tests, observed behavior, requirements>
+<errors, failing tests, current behavior, or requirements>
 
 REQUIRED OUTPUT
 - concise conclusion;
-- concrete findings;
+- concrete findings and evidence;
 - file paths and symbols when relevant;
-- proposed changes or actual changes, depending on mode;
+- proposed or actual changes, according to the mode;
 - verification actually performed;
 - risks and unresolved questions.
 
 RULES
-- Do not claim something was verified unless you actually verified it.
+- Do not claim something was verified unless you verified it.
 - Prefer repository evidence and executable tests over speculation.
 - In consult/review mode, do not modify files.
 - In implement mode, modify only the authorized scope.
 - Do not commit, push, merge, publish, deploy, or alter remote state.
 ```
 
-Pass the prompt to `agy` without adding task context, changing its objective, or
-rewriting its requirements. Mechanical transport escaping is allowed. Reject a
-prompt that lacks the context needed to execute the task.
+## Direct CLI invocation
 
-## Result validation
+Use one-shot JSON output:
 
-Treat the Antigravity run as successful only when:
-
-- the command exits successfully; and
-- the parsed JSON contains `"status": "SUCCESS"`; and
-- `.response` is a non-empty string.
-
-On success:
-
-- read `.response`;
-- retain `.conversation_id`;
-- retain usage metadata only when useful;
-- in `implement` mode, inspect workspace changes independently.
-
-On failure:
-
-1. inspect the process exit status;
-2. inspect `stderr`;
-3. inspect JSON `status` and `error` when present;
-4. classify permission denials, `CANCELED`, and empty responses as `BLOCKED`;
-5. retry once only for a clearly correctable invocation issue or plausible transient failure;
-6. do not weaken permissions merely to force success.
-
-## Return format
-
-Return to the parent conversation using:
-
-```text
-Status: SUCCESS | ERROR | BLOCKED
-Mode: consult | review | implement
-Antigravity model: <slug if explicitly selected or observable; otherwise "default">
-Conversation ID: <id if available>
-
-Summary:
-<short result>
-
-Findings:
-- <finding with concrete evidence>
-
-Files changed:
-- <paths, or "None">
-
-Verification performed:
-- <commands/checks actually performed>
-
-Risks / unresolved questions:
-- <remaining uncertainty, or "None">
+```bash
+agy -p "$PROMPT" \
+  --add-dir "$PWD" \
+  --model "$ANTIGRAVITY_MODEL" \
+  --output-format json \
+  --effort "$EFFORT" \
+  --print-timeout 10m
 ```
 
-Do not dump the full raw Antigravity response unless explicitly requested.
+Pass the prompt with safe shell quoting. Capture stdout and stderr separately so
+the host tool result does not expose diagnostics or the JSON envelope on success.
+Do not use `stream-json`, `--continue`, or `--conversation` for normal one-shot
+work. Never use `--dangerously-skip-permissions` by default.
 
-The parent Claude Code conversation owns final verification, acceptance, and integration.
+## Result gate
+
+Before printing anything from a successful run, confirm all of the following:
+
+- the `agy` process exited successfully;
+- parsed JSON has `status == "SUCCESS"`;
+- `.response` is a non-empty string;
+- captured stderr contains no permission denial or unavailable-approval notice.
+
+When every check passes, print only `jq -r '.response'` to the host tool result.
+Do not print the JSON envelope, usage, thinking-token count, conversation ID,
+progress, or stderr.
+
+On failure, do not print `.response`:
+
+- permission denial or unavailable approval: return a short `BLOCKED` reason;
+- `CANCELED`, `INTERRUPTED`, `WAITING`, or empty response: return `BLOCKED`;
+- non-zero exit, invalid JSON, `ERROR`, or `INVALID`: return a short `ERROR`
+  using the exit code and `.error` when available.
+
+Retry once only for a clearly transient failure or correctable invocation error.
+Never weaken permissions to force success.
+
+## Verification gate
+
+The main Claude Code conversation owns the final decision:
+
+- check material consultation/review claims against source files, tests, logs, or
+  authoritative documentation;
+- inspect the diff and changed-file scope after implementation;
+- prefer reproducible evidence over either model's confidence;
+- never report a claim as verified merely because Antigravity returned `SUCCESS`.

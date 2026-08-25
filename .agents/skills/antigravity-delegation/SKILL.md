@@ -1,228 +1,154 @@
 ---
 name: antigravity-delegation
-description: Delegate a bounded coding, code-review, debugging, architecture, or second-opinion task to Google Antigravity CLI through the dedicated Codex antigravity subagent. Use when an independent external-model perspective would materially improve confidence, catch mistakes, compare approaches, or perform an isolated implementation. Do not use for trivial tasks that Codex can complete and verify directly.
+description: Send a bounded coding, code-review, debugging, architecture, or second-opinion task directly from Codex to Google Antigravity CLI in headless mode. Use when an independent external-model perspective would materially improve confidence. Do not use for trivial tasks Codex can complete and verify directly.
 ---
 
 # Antigravity Delegation
 
-Use the dedicated `antigravity` Codex subagent as the adapter between the main Codex thread and Google Antigravity CLI.
+Run Google Antigravity CLI directly from the main Codex agent. Do not spawn a
+Codex subagent. Antigravity output is advisory until Codex independently verifies
+its material claims.
 
-The main Codex agent remains the orchestrator and final decision-maker. Antigravity output is advisory until independently verified.
+## Workflow
 
-## Goals
+1. Inspect the relevant repository context.
+2. Build a self-contained Antigravity prompt with the objective, scope,
+   constraints, evidence, required output, and write rules.
+3. Invoke `agy` once in headless JSON mode from the current workspace.
+4. Validate the process result, JSON status, response, and permission diagnostics.
+5. Expose only `.response` from a clean successful run.
+6. Verify important claims, tests, and workspace changes before accepting them.
 
-Use this skill to:
+Do not forward hidden chain-of-thought, secrets, or irrelevant conversation
+history. Include only the context required for the external task.
 
-- obtain an independent second opinion from an Antigravity-hosted model;
-- review code, diffs, architecture, tests, or debugging hypotheses;
-- compare an alternative implementation or design;
-- delegate a bounded implementation when isolation is useful;
-- keep verbose Antigravity interaction out of the main Codex context.
+## Work order
 
-Do not delegate merely to create more agent activity. Delegation must have a concrete verification or independence benefit.
+Use these fields internally:
 
-## Preferred Architecture
+```text
+mode: consult | review | implement
+prompt: complete, ready-to-send Antigravity prompt
+antigravity_model: optional base model name; default gemini-3.7-flash
+effort: optional low | medium | high; default high
+```
 
-Use this flow:
+If `mode` is omitted, use `consult`. Select a different model only when the user
+or task requires it. Keep the base model and reasoning effort separate; use
+`--model gemini-3.7-flash --effort high` for the default invocation. Check
+`agy models` instead of guessing an unavailable model or effort combination.
 
-1. Main Codex agent inspects the relevant repository context and identifies a bounded task.
-2. Main Codex agent writes the complete Antigravity prompt and delegates it to the custom subagent named `antigravity`.
-3. The `antigravity` subagent invokes `agy` in headless mode.
-4. The subagent validates the Antigravity run and returns a concise evidence-focused report.
-5. Main Codex independently inspects the relevant repository state, tests, logs, or diff.
-6. Main Codex accepts, rejects, or modifies the recommendation.
-
-Do not treat Antigravity as ground truth.
-
-### Codex spawn contract
-
-When spawning the custom adapter:
-
-- use `agent_type: antigravity`;
-- use `fork_turns: none` so the named custom agent can start with its own configuration;
-- do not set the spawn tool's `model` field;
-- pass `antigravity_model` only inside the work-order message because it selects the external `agy` model, not the Codex subagent model.
-
-## Delegation Modes
-
-Choose exactly one mode for each delegation.
+## Mode rules
 
 ### `consult`
 
-Use for:
-
-- architecture questions;
-- debugging hypotheses;
-- alternative approaches;
-- design tradeoffs;
-- planning;
-- independent reasoning.
-
-Default behavior: read-only. Do not ask Antigravity to modify files.
+- Use for architecture, debugging hypotheses, alternatives, planning, or tradeoffs.
+- Tell Antigravity the task is read-only and files must not be modified.
+- Require concrete conclusions, assumptions, and evidence.
 
 ### `review`
 
-Use for:
-
-- code review;
-- diff review;
-- security review;
-- test coverage review;
-- bug-risk analysis;
-- implementation critique.
-
-Default behavior: read-only. The subagent may inspect repository files and git state but must not intentionally modify the workspace.
+- Use for code, diff, test, security, or regression review.
+- Tell Antigravity the task is read-only and files must not be modified.
+- Require prioritized findings with file paths, symbols, tests, or observed behavior.
 
 ### `implement`
 
-Use only when an external implementation is useful.
+- Use only when the user explicitly authorizes workspace changes.
+- State the exact allowed scope and prohibit unrelated changes.
+- Prohibit commits, pushes, merges, publishing, deployment, branch deletion, and
+  remote-state changes unless the user explicitly requests them.
+- Preserve unrelated user changes.
+- After the run, inspect `git status --short` and `git diff`, then run the
+  narrowest relevant verification before broader checks.
 
-Examples:
+## Required Antigravity prompt
 
-- a bounded alternative implementation;
-- an isolated fix to compare against Codex's implementation;
-- a narrowly scoped refactor;
-- generating a candidate patch for later review.
+Use this shape:
 
-The parent task must explicitly state that file modifications are allowed.
+```text
+ROLE
+You are an independent coding agent providing work to another coding agent that
+will verify your result.
 
-After the subagent returns, the main Codex agent must inspect the resulting changes with `git status` and `git diff` before accepting them.
+MODE
+<consult | review | implement>
 
-## What to Send to the Subagent
+OBJECTIVE
+<exact task>
 
-The main Codex agent owns context selection and prompt construction. Before
-delegating, inspect the relevant repository state and give the `antigravity`
-subagent a self-contained work order containing:
+SCOPE
+<files, modules, services, or repository areas>
 
-- `mode`: `consult`, `review`, or `implement`;
-- `prompt`: the complete, ready-to-send Antigravity prompt;
-- `antigravity_model`: optional model slug; defaults to `gemini-3.7-flash-high`;
-- `effort`: optional `low`, `medium`, or `high`; default to `high` for substantive technical work.
+CONSTRAINTS
+<technical and behavioral constraints>
 
-The prompt must already contain the exact objective, relevant repository context
-and paths, constraints, evidence, required output, and mode-specific write rules.
-The adapter must not discover missing task context or rewrite an incomplete request
-into a better prompt. If required context is missing, fix the parent work order
-before spawning the adapter.
+EVIDENCE
+<errors, failing tests, current behavior, or requirements>
 
-Do not forward hidden chain-of-thought, secrets, or irrelevant conversation
-history. Include only the task context necessary for the external model to perform
-the work.
+REQUIRED OUTPUT
+- concise conclusion;
+- concrete findings and evidence;
+- file paths and symbols when relevant;
+- proposed or actual changes, according to the mode;
+- verification actually performed;
+- risks and unresolved questions.
 
-## Expected Subagent Return
+RULES
+- Do not claim something was verified unless you verified it.
+- Prefer repository evidence and executable tests over speculation.
+- In consult/review mode, do not modify files.
+- In implement mode, modify only the authorized scope.
+- Do not commit, push, merge, publish, deploy, or alter remote state.
+```
 
-The `antigravity` subagent should return a concise report with:
+## Direct CLI invocation
 
-- `Status`
-- `Mode`
-- `Antigravity model` when known
-- `Summary`
-- `Findings`
-- `Evidence`
-- `Files changed` when applicable
-- `Verification performed`
-- `Risks / unresolved questions`
-- `Conversation ID` when available
-
-Prefer concrete file paths, symbols, commands, test names, and observed behavior over generic prose.
-
-## Verification Gate
-
-The main Codex agent owns final verification.
-
-For review or consultation:
-
-1. Check material claims against the repository or authoritative documentation.
-2. Reproduce important bugs or behavior when practical.
-3. Resolve disagreements using code, tests, logs, specifications, or other primary evidence.
-
-For implementation:
-
-1. Run `git status --short`.
-2. Inspect `git diff`.
-3. Confirm that changes remain inside the delegated scope.
-4. Run the narrowest relevant tests first.
-5. Run broader tests, linting, type checking, or build checks when justified.
-6. Fix or reject changes that fail verification.
-
-Never report an Antigravity claim as verified merely because the Antigravity run returned `SUCCESS`.
-
-## Conflict Handling
-
-If Codex and Antigravity disagree:
-
-1. identify the exact disputed claim;
-2. inspect primary evidence;
-3. run a focused test or experiment when possible;
-4. prefer reproducible evidence over either model's confidence;
-5. state any remaining uncertainty.
-
-For high-risk changes, prefer independent deterministic verification rather than asking the same model to validate its own work.
-
-## Safety and Permissions
-
-- Never use `--dangerously-skip-permissions` by default.
-- Do not broaden Antigravity permissions merely to avoid a failed tool call.
-- In `consult` and `review` modes, instruct Antigravity not to modify files.
-- In `implement` mode, allow only the minimum workspace changes required by the task.
-- Do not commit, push, merge, publish, deploy, delete branches, or alter remote state unless the parent task explicitly requires it.
-- Preserve existing user changes. Do not reset or overwrite unrelated work.
-- If authentication or permissions block Antigravity, report the blocker rather than bypassing controls.
-
-## CLI Requirements
-
-The `antigravity` subagent should use Antigravity headless mode.
-
-Preferred single-run form:
+Use one-shot JSON output:
 
 ```bash
-agy -p "<TASK>" \
+agy -p "$PROMPT" \
   --add-dir "$PWD" \
-  --model "gemini-3.7-flash-high" \
+  --model "$ANTIGRAVITY_MODEL" \
   --output-format json \
-  --effort high \
+  --effort "$EFFORT" \
   --print-timeout 10m
 ```
 
-When the parent specifies a different Antigravity model, replace the default slug:
+Pass the prompt with safe shell quoting. Capture stdout and stderr separately so
+the host tool result does not expose diagnostics or the JSON envelope on success.
+Do not use `stream-json`, `--continue`, or `--conversation` for normal one-shot
+work. Never use `--dangerously-skip-permissions` by default.
 
-```bash
-agy -p "<TASK>" \
-  --add-dir "$PWD" \
-  --model "<MODEL_SLUG>" \
-  --output-format json \
-  --effort high \
-  --print-timeout 10m
-```
+## Result gate
 
-Interpret the run as successful only when:
+Before printing anything from a successful run, confirm all of the following:
 
-- the process exits successfully; and
-- the JSON envelope contains `"status": "SUCCESS"`; and
-- `.response` is a non-empty string.
+- the `agy` process exited successfully;
+- parsed JSON has `status == "SUCCESS"`;
+- `.response` is a non-empty string;
+- captured stderr contains no permission denial or unavailable-approval notice.
 
-Use `.response` as the model response and retain `.conversation_id` for traceability when available.
+When every check passes, print only `jq -r '.response'` to the host tool result.
+Do not print the JSON envelope, usage, thinking-token count, conversation ID,
+progress, or stderr.
 
-Do not use streaming mode unless the task genuinely requires a multi-turn Antigravity conversation.
+On failure, do not print `.response`:
 
-## Failure Handling
+- permission denial or unavailable approval: return a short `BLOCKED` reason;
+- `CANCELED`, `INTERRUPTED`, `WAITING`, or empty response: return `BLOCKED`;
+- non-zero exit, invalid JSON, `ERROR`, or `INVALID`: return a short `ERROR`
+  using the exit code and `.error` when available.
 
-If the Antigravity run fails:
+Retry once only for a clearly transient failure or correctable invocation error.
+Never weaken permissions to force success.
 
-1. inspect the process exit status;
-2. inspect `stderr`;
-3. inspect the JSON `status` and `error` fields when present;
-4. classify permission denials, `CANCELED`, and empty responses as `BLOCKED`;
-5. retry only when the failure is plausibly transient or caused by a correctable invocation issue;
-6. do not silently switch to `--dangerously-skip-permissions`;
-7. return the failure clearly to the parent Codex agent.
+## Verification gate
 
-If the custom `antigravity` subagent cannot be spawned but `agy` is available, the main Codex agent may use the same headless workflow directly as a fallback. Preserve the same verification rules.
+Codex owns the final decision:
 
-## Efficiency Rules
-
-- Keep each delegation bounded.
-- Prefer one strong external review over several redundant calls.
-- Do not delegate information the main agent can verify cheaply with a deterministic command.
-- Use Antigravity for independence, alternative reasoning, or isolated execution—not as a substitute for tests.
-- Summarize verbose external output before returning it to the main context.
+- check material consultation/review claims against source files, tests, logs, or
+  authoritative documentation;
+- inspect the diff and changed-file scope after implementation;
+- prefer reproducible evidence over either model's confidence;
+- never report a claim as verified merely because Antigravity returned `SUCCESS`.

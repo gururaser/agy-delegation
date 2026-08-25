@@ -2,81 +2,95 @@
 
 [English](README.md) | **Türkçe**
 
-Sınırları belirlenmiş kodlama, review, debugging veya mimari görevlerini **OpenAI Codex** ya da **Claude Code** üzerinden Google Antigravity CLI'ye delege eder. Ana ajan planlar ve doğrular; Antigravity bağımsız bir implementation veya ikinci görüş üretir.
+Sınırları belirlenmiş kodlama, review, debugging veya mimari görevlerini **OpenAI
+Codex** ya da **Claude Code** ana modelinden doğrudan Google Antigravity CLI'ye
+gönderir. Ana model bağlamı seçer, `agy` çağrısını yapar ve harici cevabı arada
+sub-agent olmadan doğrular.
 
 ```mermaid
 flowchart LR
-    A["Ana ajan<br/>Planlama ve doğrulama"] --> B["Adapter sub-agent<br/>Luna veya Haiku"]
+    A["Ana model<br/>Bağlam ve prompt"] --> B["Host skill"]
     B --> C["Antigravity CLI<br/>agy"]
-    C --> D["Gemini 3.7 Flash<br/>Implementation veya review"]
-    D -->|Yapılandırılmış sonuç| B
-    B -->|Kısa kanıt raporu| A
+    C --> D["Antigravity modeli"]
+    D -->|"Yalnızca .response"| E["Ana model doğrulaması"]
 ```
 
 ## Nasıl çalışır?
 
-- Codex, proje skill'i ile low reasoning kullanan bir `gpt-5.6-luna` adapter çalıştırır.
-- Claude Code, fork edilmiş skill ile low effort kullanan bir `haiku` adapter çalıştırır.
-- İki adapter da asıl iş için varsayılan olarak `gemini-3.7-flash-high` kullanır.
+- Codex ve Claude Code ana konuşmada host'a özgü bir skill kullanır.
+- Skill, `agy --output-format json` ile tek ve eksiksiz bir prompt gönderir.
+- Temiz bir çalıştırma; başarılı process exit, JSON `status: SUCCESS`, boş olmayan
+  `response` ve permission-denial içermeyen stderr gerektirir.
+- Başarıda yalnızca `.response` gösterilir. JSON zarfı, kullanım verisi,
+  thinking-token sayısı, conversation ID, ilerleme ve stderr host tool sonucuna girmez.
 - `consult` ve `review` read-only'dir; `implement` yalnızca açıkça sınırlandırılmış değişikliklere izin verir.
-- Ana ajan ilgili bağlamı inceler, eksiksiz Antigravity promptunu yazar ve sonucu kabul etmeden önce doğrular.
-
-Codex ve Claude Code'un custom-agent mekanizmaları farklı olduğu için ayrı wrapper'lar gerekir. Workflow ve güvenlik kuralları ise aynıdır.
+- Ana model önemli iddiaları ve workspace değişikliklerini kabul etmeden önce doğrular.
 
 ## Dosyalar
 
 ```text
 .agents/skills/antigravity-delegation/SKILL.md   # Codex skill
-.codex/agents/antigravity.toml                   # Codex adapter
-.claude/skills/antigravity-delegation/SKILL.md   # Claude Code skill
-.claude/agents/antigravity.md                    # Claude Code adapter
+.claude/skills/antigravity-delegation/SKILL.md  # Claude Code skill
 ```
 
 ## Gereksinimler
 
 - Google Antigravity CLI kurulu ve authenticate edilmiş olmalı
 - `agy` komutu `PATH` üzerinde bulunmalı
+- JSON doğrulama ve response extraction için `jq`
 - Codex, Claude Code veya ikisi birden
 - Implementation görevlerinde diff doğrulaması için Git
 
-Antigravity'nin hazır olduğunu doğrula:
+Yerel araçları doğrula:
 
 ```bash
 agy models
+jq --version
 ```
 
 ## Kurulum
 
 ### Proje bazlı
 
-İlgili gizli klasörleri projenin root dizinine kopyala:
+İlgili skill dizinini projenin root dizinine kopyala:
 
-| Host | Gerekli dosyalar |
+| Host | Gerekli dosya |
 |---|---|
-| Codex | `.agents/skills/antigravity-delegation/SKILL.md` ve `.codex/agents/antigravity.toml` |
-| Claude Code | `.claude/skills/antigravity-delegation/SKILL.md` ve `.claude/agents/antigravity.md` |
+| Codex | `.agents/skills/antigravity-delegation/SKILL.md` |
+| Claude Code | `.claude/skills/antigravity-delegation/SKILL.md` |
 
-İki host'u da kullanıyorsan dört dosyanın tamamını tut. Kurulumdan veya agent tanımı değişikliğinden sonra yeni bir host session başlat.
+İki host'u da kullanıyorsan iki skill dosyasını da tut. Kurulumdan veya skill
+değişikliğinden sonra yeni bir host session başlat.
 
 ### Global
 
 Codex:
 
 ```bash
-mkdir -p ~/.agents/skills/antigravity-delegation ~/.codex/agents
-cp .agents/skills/antigravity-delegation/SKILL.md ~/.agents/skills/antigravity-delegation/SKILL.md
-cp .codex/agents/antigravity.toml ~/.codex/agents/antigravity.toml
+mkdir -p ~/.agents/skills/antigravity-delegation
+cp .agents/skills/antigravity-delegation/SKILL.md \
+  ~/.agents/skills/antigravity-delegation/SKILL.md
 ```
 
 Claude Code:
 
 ```bash
-mkdir -p ~/.claude/skills/antigravity-delegation ~/.claude/agents
-cp .claude/skills/antigravity-delegation/SKILL.md ~/.claude/skills/antigravity-delegation/SKILL.md
-cp .claude/agents/antigravity.md ~/.claude/agents/antigravity.md
+mkdir -p ~/.claude/skills/antigravity-delegation
+cp .claude/skills/antigravity-delegation/SKILL.md \
+  ~/.claude/skills/antigravity-delegation/SKILL.md
 ```
 
-Kurulumdan sonra host session'ını yeniden başlat.
+### Sub-agent sürümünden yükseltme
+
+Yeni skill'leri kopyaladıktan sonra eski kurulu agent tanımlarını kaldır:
+
+```bash
+rm ~/.codex/agents/antigravity.toml
+rm ~/.claude/agents/antigravity.md
+```
+
+Yalnızca daha önce kurduğun dosyanın komutunu çalıştır. Repository global Codex
+veya Claude Code konfigürasyonunu otomatik olarak değiştirmez.
 
 ## Kullanım
 
@@ -110,9 +124,8 @@ prompt: |
   Bulguları dosya referansları ve somut kanıtlarla önem sırasına göre döndür.
 ```
 
-Ana ajan ilgili repository bağlamını incelemeli ve doğrudan Antigravity'ye
-gönderilmeye hazır, eksiksiz promptu yazmalıdır. Adapter bu promptu taşır; eksik
-bağlamı keşfetmez veya görevi yeniden yazmaz.
+Ana model ilgili repository bağlamını inceler ve Antigravity'yi çağırmadan önce
+doğrudan gönderilmeye hazır, eksiksiz promptu yazar.
 
 Work-order alanları:
 
@@ -120,44 +133,41 @@ Work-order alanları:
 mode: consult | review | implement
 prompt: amaç, ilgili bağlam ve yollar, kısıtlar, kanıtlar, beklenen çıktı ve
         yazma kurallarını içeren eksiksiz prompt
-antigravity_model: isteğe bağlı model override'ı
+antigravity_model: isteğe bağlı temel model override'ı
 effort: low | medium | high
 ```
 
-## Modeller
+Skill temel modeli ve reasoning effort seviyesini ayrı parametreler olarak geçirir.
+
+## Model
 
 | Rol | Varsayılan |
 |---|---|
-| Codex adapter | `gpt-5.6-luna`, low reasoning |
-| Claude Code adapter | `haiku`, low effort |
-| Antigravity worker | `gemini-3.7-flash-high` |
+| Antigravity worker | `gemini-3.7-flash`, `effort: high` |
 
 Worker modelini yalnızca gerektiğinde değiştir:
 
 ```text
-antigravity_model: gemini-3.7-flash-medium
+antigravity_model: gemini-3.7-flash
+effort: medium
 ```
 
-Güncel model slug'ları için `agy models` çalıştır. Geçersiz bir pinned model, sessizce başka model seçmek yerine açıkça hata verir.
-
-Codex runtime Luna override'ını reddederse adapter'ın parent konfigürasyonunu inherit etmesi için `.codex/agents/antigravity.toml` içindeki şu satırları kaldır:
-
-```toml
-model = "gpt-5.6-luna"
-model_reasoning_effort = "low"
-```
+Güncel model ve effort kombinasyonları için `agy models` çalıştır. Geçersiz bir
+pinned model, sessizce başka model seçmek yerine açıkça hata verir.
 
 ## Workspace, izinler ve doğrulama
 
-Her adapter çağrısı şunu içerir:
+Her çağrı şunu içerir:
 
 ```bash
 --add-dir "$PWD"
 ```
 
-Böylece CLI önceki bir session'dan farklı bir proje tutmuş olsa bile host'un mevcut projesi aktif Antigravity workspace'i olur.
+Böylece CLI önceki bir session'dan farklı bir proje tutmuş olsa bile host'un
+mevcut projesi Antigravity tarafından erişilebilir olur.
 
-Onay gerektiren headless shell komutları `~/.gemini/antigravity-cli/settings.json` içinde açıkça izinli olmalıdır. İzinleri dar tut:
+Onay gerektiren headless shell komutları `~/.gemini/antigravity-cli/settings.json`
+içinde açıkça izinli olmalıdır. İzinleri dar tut:
 
 ```json
 {
@@ -170,11 +180,12 @@ Onay gerektiren headless shell komutları `~/.gemini/antigravity-cli/settings.js
 }
 ```
 
-Proje komutu kuralını gerektiği gibi değiştir. Eşleşen bir `deny` veya `ask` kuralı `allow` kuralından önceliklidir.
+Proje komutu kuralını gerektiği gibi değiştir. Engellenmiş bir çağrıyı bypass
+etmek için `--dangerously-skip-permissions` kullanma.
 
-Adapter'lar `--dangerously-skip-permissions` kullanmaz. Parent görev açıkça yetki vermedikçe commit, push, merge, deployment, yayınlama, branch silme ve remote-state değişikliklerini de yasaklar.
-
-Bir Antigravity çalıştırması yalnızca process başarıyla sonlandığında, JSON `status` değeri `SUCCESS` olduğunda ve `response` boş olmadığında başarılıdır. Ana ajan yine de önemli iddiaları repository, diff, testler, loglar veya otoritatif dokümantasyon üzerinden doğrulamalıdır.
+Ana model önemli iddiaları repository, diff, testler, loglar veya otoritatif
+dokümantasyon üzerinden yine doğrulamalıdır. Dönen `SUCCESS`, Antigravity'nin
+sonuçlarının doğru olduğunun kanıtı değildir.
 
 ## Sorun giderme
 
@@ -189,16 +200,17 @@ Bu komutları Codex veya Claude Code'u başlatan environment içinde çalıştı
 
 ### Antigravity `ERROR` veya `BLOCKED` döndürüyor
 
-Process exit code, `stderr`, JSON `error`, istenen model slug'ı ve Antigravity permission policy'yi kontrol et. Kontrolleri bypass etmek yerine eksik olan en dar izni yapılandır.
+Process exit code, JSON `error`, istenen model ve Antigravity permission
+policy'yi kontrol et. Kontrolleri bypass etmek yerine eksik olan en dar izni yapılandır.
 
-### Host skill veya adapter'ı bulamıyor
+### Host skill'i bulamıyor
 
-Kurulum tablosundaki proje ya da global path'leri doğrula ve yeni bir host session başlat. Claude Code tarafında `/skills` ve `/agents` ekranlarını kontrol et.
+İlgili proje veya global skill path'ini doğrula ve yeni bir host session başlat.
+Claude Code tarafında `/skills` ekranını kontrol et.
 
 ## Dokümantasyon
 
 - [Antigravity headless mode](https://antigravity.google/docs/cli/headless/)
 - [Antigravity permissions](https://antigravity.google/docs/cli/permissions/)
-- [Codex subagents](https://learn.chatgpt.com/docs/agent-configuration/subagents)
-- [Claude Code skills](https://code.claude.com/docs/en/slash-commands)
-- [Claude Code subagents](https://code.claude.com/docs/en/sub-agents)
+- [Codex skills](https://learn.chatgpt.com/docs/build-skills)
+- [Claude Code skills](https://code.claude.com/docs/en/skills)
