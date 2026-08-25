@@ -17,7 +17,8 @@ flowchart LR
 
 ## How it works
 
-- Codex and Claude Code each use a host-specific skill in the main conversation.
+- Codex and Claude Code use the same canonical skill in the main conversation.
+- Both hosts read the repository's single `SKILL.md`.
 - The skill sends one self-contained prompt to `agy --output-format json`.
 - A clean run must have a successful process exit, JSON `status: SUCCESS`, a
   non-empty `response`, and no permission-denial diagnostic.
@@ -29,8 +30,7 @@ flowchart LR
 ## Files
 
 ```text
-.agents/skills/antigravity-delegation/SKILL.md   # Codex skill
-.claude/skills/antigravity-delegation/SKILL.md  # Claude Code skill
+SKILL.md  # Shared skill definition
 ```
 
 ## Requirements
@@ -50,46 +50,13 @@ jq --version
 
 ## Installation
 
-### Project-scoped
+Use the repository-root `SKILL.md` with either Codex or Claude Code. The
+repository intentionally contains no host-specific skill or agent definitions.
 
-Copy the relevant skill directory into the project root:
+### Upgrading from an earlier version
 
-| Host | Required file |
-|---|---|
-| Codex | `.agents/skills/antigravity-delegation/SKILL.md` |
-| Claude Code | `.claude/skills/antigravity-delegation/SKILL.md` |
-
-Keep both skill files when using both hosts. Start a new host session after
-installing or changing a skill.
-
-### Global
-
-Codex:
-
-```bash
-mkdir -p ~/.agents/skills/antigravity-delegation
-cp .agents/skills/antigravity-delegation/SKILL.md \
-  ~/.agents/skills/antigravity-delegation/SKILL.md
-```
-
-Claude Code:
-
-```bash
-mkdir -p ~/.claude/skills/antigravity-delegation
-cp .claude/skills/antigravity-delegation/SKILL.md \
-  ~/.claude/skills/antigravity-delegation/SKILL.md
-```
-
-### Upgrading from the subagent version
-
-After copying the new skills, remove the obsolete installed agent definitions:
-
-```bash
-rm ~/.codex/agents/antigravity.toml
-rm ~/.claude/agents/antigravity.md
-```
-
-Only run the command for files you previously installed. The repository does not
+Remove any previously installed host-specific skill copies and obsolete
+subagent definitions, then use the shared `SKILL.md`. The repository does not
 modify global Codex or Claude Code configuration automatically.
 
 ## Usage
@@ -206,8 +173,8 @@ bypassing checks.
 
 ### The host cannot find the skill
 
-Confirm the appropriate project or global skill path, then start a new host
-session. In Claude Code, inspect `/skills`.
+Confirm that the host loaded `SKILL.md`, then start a new host session. In Claude
+Code, inspect `/skills`.
 
 ## Documentation
 

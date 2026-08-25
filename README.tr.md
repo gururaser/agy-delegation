@@ -17,7 +17,8 @@ flowchart LR
 
 ## Nasıl çalışır?
 
-- Codex ve Claude Code ana konuşmada host'a özgü bir skill kullanır.
+- Codex ve Claude Code ana konuşmada aynı canonical skill'i kullanır.
+- Her iki host da repository'deki tek `SKILL.md` dosyasını okur.
 - Skill, `agy --output-format json` ile tek ve eksiksiz bir prompt gönderir.
 - Temiz bir çalıştırma; başarılı process exit, JSON `status: SUCCESS`, boş olmayan
   `response` ve permission-denial içermeyen stderr gerektirir.
@@ -29,8 +30,7 @@ flowchart LR
 ## Dosyalar
 
 ```text
-.agents/skills/antigravity-delegation/SKILL.md   # Codex skill
-.claude/skills/antigravity-delegation/SKILL.md  # Claude Code skill
+SKILL.md  # Ortak skill tanımı
 ```
 
 ## Gereksinimler
@@ -50,47 +50,14 @@ jq --version
 
 ## Kurulum
 
-### Proje bazlı
+Repository kökündeki `SKILL.md` dosyasını Codex veya Claude Code ile kullan.
+Repository özellikle host'a özgü skill veya agent tanımları içermez.
 
-İlgili skill dizinini projenin root dizinine kopyala:
+### Önceki bir sürümden yükseltme
 
-| Host | Gerekli dosya |
-|---|---|
-| Codex | `.agents/skills/antigravity-delegation/SKILL.md` |
-| Claude Code | `.claude/skills/antigravity-delegation/SKILL.md` |
-
-İki host'u da kullanıyorsan iki skill dosyasını da tut. Kurulumdan veya skill
-değişikliğinden sonra yeni bir host session başlat.
-
-### Global
-
-Codex:
-
-```bash
-mkdir -p ~/.agents/skills/antigravity-delegation
-cp .agents/skills/antigravity-delegation/SKILL.md \
-  ~/.agents/skills/antigravity-delegation/SKILL.md
-```
-
-Claude Code:
-
-```bash
-mkdir -p ~/.claude/skills/antigravity-delegation
-cp .claude/skills/antigravity-delegation/SKILL.md \
-  ~/.claude/skills/antigravity-delegation/SKILL.md
-```
-
-### Sub-agent sürümünden yükseltme
-
-Yeni skill'leri kopyaladıktan sonra eski kurulu agent tanımlarını kaldır:
-
-```bash
-rm ~/.codex/agents/antigravity.toml
-rm ~/.claude/agents/antigravity.md
-```
-
-Yalnızca daha önce kurduğun dosyanın komutunu çalıştır. Repository global Codex
-veya Claude Code konfigürasyonunu otomatik olarak değiştirmez.
+Daha önce kurulmuş host'a özgü skill kopyalarını ve obsolete sub-agent
+tanımlarını kaldır, ardından ortak `SKILL.md` dosyasını kullan. Repository global
+Codex veya Claude Code konfigürasyonunu otomatik olarak değiştirmez.
 
 ## Kullanım
 
@@ -205,7 +172,7 @@ policy'yi kontrol et. Kontrolleri bypass etmek yerine eksik olan en dar izni yap
 
 ### Host skill'i bulamıyor
 
-İlgili proje veya global skill path'ini doğrula ve yeni bir host session başlat.
+Host'un `SKILL.md` dosyasını yüklediğini doğrula ve yeni bir host session başlat.
 Claude Code tarafında `/skills` ekranını kontrol et.
 
 ## Dokümantasyon

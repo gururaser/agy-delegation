@@ -1,13 +1,13 @@
 ---
 name: antigravity-delegation
-description: Send a bounded coding, code-review, debugging, architecture, or second-opinion task directly from Codex to Google Antigravity CLI in headless mode. Use when an independent external-model perspective would materially improve confidence. Do not use for trivial tasks Codex can complete and verify directly.
+description: Send a bounded coding, code-review, debugging, architecture, or second-opinion task directly from the main Codex or Claude Code agent to Google Antigravity CLI in headless mode. Use when an independent external-model perspective would materially improve confidence. Do not use for trivial tasks the host can complete and verify directly.
 ---
 
 # Antigravity Delegation
 
-Run Google Antigravity CLI directly from the main Codex agent. Do not spawn a
-Codex subagent. Antigravity output is advisory until Codex independently verifies
-its material claims.
+Run Google Antigravity CLI directly from the main host agent. Do not spawn a
+Codex or Claude Code subagent. Antigravity output is advisory until the host
+independently verifies its material claims.
 
 ## Workflow
 
@@ -145,7 +145,7 @@ Never weaken permissions to force success.
 
 ## Verification gate
 
-Codex owns the final decision:
+The host agent owns the final decision:
 
 - check material consultation/review claims against source files, tests, logs, or
   authoritative documentation;
